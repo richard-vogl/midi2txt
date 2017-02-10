@@ -23,3 +23,30 @@ midi_drum_map = {
     21: 54,  # tambourine
     22: 75,  # claves, stick click
 }
+
+rev_midi_drum_map = {
+    36 : 0,  # bass drum
+    38 : 1,  # snare drum
+    40 : 1,
+    34 : 1,
+    42 : 2,  # closed hi-hat
+    46 : 3,  # open hi-hat
+    44 : 4,  # pedal hi-hat
+    56 : 5,  # cowbell
+    53 : 6,  # ride bell
+    41 : 7,  # low floor tom
+    43 : 9,  # high floor tom
+    45 : 10,  # low tom
+    47 : 11,  # low-mid tom
+    48 : 12,  # high-mid tom
+    50 : 13,  # high tom
+    37 : 14,  # side stick
+    39 : 15,  # hand clap
+    51 : 16,  # ride cymbal
+    49 : 17,  # crash cymbal
+    55 : 18,  # splash cymbal
+    52 : 19,  # chinese cymbal
+    70 : 20,  # shaker, maracas
+    54 : 21,  # tambourine
+    75 : 22,  # claves, stick click
+}
