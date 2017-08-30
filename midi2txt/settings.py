@@ -22,6 +22,7 @@ midi_drum_map = {
     20: 70,  # shaker, maracas
     21: 54,  # tambourine
     22: 75,  # claves, stick click
+    23: 81,  # triangle, high bells
 }
 
 rev_midi_drum_map = {
@@ -49,4 +50,5 @@ rev_midi_drum_map = {
     70 : 20,  # shaker, maracas
     54 : 21,  # tambourine
     75 : 22,  # claves, stick click
+    81 : 23,  # triangle, high bells
 }

@@ -14,6 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--tempo', '-t', help='tempo of midi file in BPM', default=120, type=float)
     parser.add_argument('--program', '-p', help='program number of midi track', default=0)
     parser.add_argument('--channel', '-c', help='channel number of midi track', default=10)
+    parser.add_argument('--ignore', '-g', help='Ignore unknown instrument notes and continue', action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -23,10 +24,12 @@ if __name__ == '__main__':
     # "/Users/Rich/datasets/rbma/2011 Madrid/"
     # "/Users/Rich/datasets/rbma/2010 London/"
     # input_file = "/Users/Rich/datasets/rbma/2013 New York/annotations (JKU)/Red Bull Music Academy - Various Assets - Not For Sale- Red Bull Music - 02 DJ Slow & Sinjin Hawke - On Now.drums.txt"
+
     output_file = args.outfile
     bpm = args.tempo
     program_nr = args.program
     channel_nr = args.channel
+    ignore_unknown = args.ignore
 
     in_file_path = os.path.dirname(input_file)
     is_input_dir = os.path.isdir(input_file)
@@ -75,10 +78,15 @@ if __name__ == '__main__':
                 deltaTime = curTime - lastTime
                 lastTime = curTime
 
-                note = midi_drum_map[entry[1]]
-                track.append(Message('note_on', note=note, velocity=100,
-                                     time=deltaTime, channel=channel_nr))
-                #  print('event: note: %d, time: %d'% (note, curTime))
-                track.append(Message('note_off', note=note, velocity=100, time=0, channel=channel_nr))
+                if entry[1] in midi_drum_map:
+                    note = midi_drum_map[entry[1]]
+                    track.append(Message('note_on', note=note, velocity=100,
+                                         time=deltaTime, channel=channel_nr))
+                    #  print('event: note: %d, time: %d'% (note, curTime))
+                    track.append(Message('note_off', note=note, velocity=100, time=0, channel=channel_nr))
+
+                elif not ignore_unknown:
+                    print("unknown instrument type with value: "+str(entry[1])+" . Remove event or run again with -g parameter to ignore.")
+                    exit()
 
             outfile.save(output_file)

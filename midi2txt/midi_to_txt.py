@@ -4,7 +4,7 @@ import argparse
 import os
 
 
-def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=False, beats_file=None):
+def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=False, beats_file=None, ignore_unknown=False):
 
     in_file_path = os.path.dirname(input_file)
     in_file_name = os.path.basename(input_file)
@@ -91,10 +91,14 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
                 do_beats = True
 
             if message.type == 'note_on' and message.velocity > 0:
-                inst_idx = rev_midi_drum_map[message.note] # midi_drum_map.keys()[midi_drum_map.values().index(message.note)]
-                if inst_idx is not None:
-                    times.append([cur_time, inst_idx])
-                do_beats = True
+                if message.note in rev_midi_drum_map:
+                    inst_idx = rev_midi_drum_map[message.note] # midi_drum_map.keys()[midi_drum_map.values().index(message.note)]
+                    if inst_idx is not None:
+                        times.append([cur_time, inst_idx])
+                    do_beats = True
+                elif not ignore_unknown:
+                    print("Unknown midi note with value: "+str(message.note)+" . Remove event or run again with -g parameter to ignore.")
+                    exit()
 
             if not beats_done and do_beats:
                 sub_beat += delta_time * bpm / 60.0 * time_sig_denom / 4.0
@@ -132,6 +136,7 @@ if __name__ == '__main__':
     parser.add_argument('--outfile', '-o', help='output file name.', default=None)
     parser.add_argument('--time_offset', '-m', help='offset for time of labels.', default=0, type=float)
     parser.add_argument('--tempo', '-t', help='Tempo to be used (in BPM) if MIDI file doesn\'t contain tempo events.', default=120, type=float)
+    parser.add_argument('--ignore', '-g', help='Ignore unknown midi notes and continue', action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -139,5 +144,6 @@ if __name__ == '__main__':
     output_file = args.outfile
     offset = args.time_offset
     bpm = args.tempo
+    ignore_unknown = args.ignore
 
-    midi_to_txt(input_file, output_file, offset, bpm)
+    midi_to_txt(input_file, output_file, offset, bpm, False, None, ignore_unknown)
