@@ -110,8 +110,6 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
 
         beats_done = True
 
-
-
     print("Writing output ...")
     # sort by time (for multiple tracks)
     times.sort(key=lambda tup: tup[0])

@@ -4,44 +4,127 @@ import argparse
 import os
 
 
+def fix_beats_list(beat_times):
+    first_downbeat = 0
+    for cur_beat in beat_times:
+        if cur_beat[1] == 1:
+            first_downbeat = cur_beat[0]
+            break
+
+    first_beat = beat_times[0][0]
+
+    # fix beats:
+    click_in_beats = max([x[1] for x in beat_times])  # 4
+    start_beat_interval = (beat_times[1][0] - first_beat)
+    add_beat_times = []
+    # check if we started with a downbeat:
+    if first_beat != first_downbeat:
+        # count beats to fill:
+        tf_num_beats = beat_times[0][1] - 1
+        bar_finish_time = tf_num_beats * start_beat_interval
+        if bar_finish_time <= first_beat:
+            # enough time to fill up beats
+            # split remaining time TODO: use tempo curve?
+            remaining_time = bar_finish_time - first_beat
+            init_interval = start_beat_interval
+        else:
+            remaining_time = 0
+            init_interval = first_beat / tf_num_beats
+
+        add_beat_times = [[remaining_time + beat * init_interval, beat + 1] for beat in range(tf_num_beats)]
+    else:
+        remaining_time = first_beat
+
+    # add a bar to cover start silence
+    if sync_to_audio and remaining_time > 0:
+        interval = remaining_time / click_in_beats
+        add_beat_times = [[beat * interval, beat + 1] for beat in range(click_in_beats)] + add_beat_times
+
+    beat_times = add_beat_times + beat_times
+
+    return beat_times
+
+
+def midi_delta_time(delta_time, s_per_tick):
+    return int(max(round(delta_time / s_per_tick), 0.0))
+
+
 if __name__ == '__main__':
 
     # add argument parser
     parser = argparse.ArgumentParser(
         description='Convert text annotations for drum files to midi.')
     parser.add_argument('--infile', '-i', help='input audio file.')
+    parser.add_argument('--beatfile', '-b', help='input beat file.', default=None)
     parser.add_argument('--outfile', '-o', help='output file name.', default=None)
     parser.add_argument('--tempo', '-t', help='tempo of midi file in BPM', default=120, type=float)
     parser.add_argument('--program', '-p', help='program number of midi track', default=0)
     parser.add_argument('--channel', '-c', help='channel number of midi track', default=10)
     parser.add_argument('--ignore', '-g', help='Ignore unknown instrument notes and continue', action='store_true', default=False)
+    parser.add_argument('--sync_to_audio', '-s', help='Make MIDI output synchronous to audio. If beats are used, usa a bar at the beginning to fill the silence', type=bool, default=True)
 
     args = parser.parse_args()
-
+    # prepare input params
     input_file = args.infile
-    # input_file = "/Users/Rich/Desktop/Red Bull Music Academy - Various Assets - Not For Sale- Red Bull Music - 01 August Rosenbaum, Jameszoo & Stephen Bruner - Jordi.drums_A.txt_orig"
-    # "/Users/Rich/datasets/rbma/2013 New York/"
-    # "/Users/Rich/datasets/rbma/2011 Madrid/"
-    # "/Users/Rich/datasets/rbma/2010 London/"
-    # input_file = "/Users/Rich/datasets/rbma/2013 New York/annotations (JKU)/Red Bull Music Academy - Various Assets - Not For Sale- Red Bull Music - 02 DJ Slow & Sinjin Hawke - On Now.drums.txt"
-
+    input_beat_file = args.beatfile
     output_file = args.outfile
     bpm = args.tempo
     program_nr = args.program
     channel_nr = args.channel
     ignore_unknown = args.ignore
+    sync_to_audio = args.sync_to_audio
 
     in_file_path = os.path.dirname(input_file)
+    beat_file_path = os.path.dirname(input_beat_file)
     is_input_dir = os.path.isdir(input_file)
+    is_input_beat_dir = os.path.isdir(input_beat_file)
+
+    beat_files = None
+    use_beats = input_beat_file is not None and os.path.exists(input_beat_file)
     if is_input_dir:
         files = os.listdir(input_file)
         files = [x for x in files if x.endswith('.txt') or x.endswith('.drums')]
         has_out_dir = output_file is not None and os.path.isdir(output_file)
+
+        if use_beats:
+            assert is_input_beat_dir
+            # find beat file for txt files
+            beat_files = []
+            for in_file_idx, input_file in enumerate(files):
+                file_name_wo_ext, in_ext = os.path.splitext(input_file)
+                found = False
+                for beat_ext in ['.beats', '.beats.txt', '.'+in_ext+'.beats', '.'+in_ext+'.beats.txt']:
+                    cand_beat_file = os.path.join(beat_file_path, file_name_wo_ext+beat_ext)
+                    if os.path.exists(cand_beat_file):
+                        beat_files.append(cand_beat_file)
+                        found = True
+                        break
+                if not found:
+                    beat_files.append(None)
     else:
         files = [os.path.basename(input_file)]
+        if use_beats:
+            beat_files = [os.path.basename(input_beat_file)]
 
-    for input_file in files:
+    # loop over input files
+    for in_file_idx, input_file in enumerate(files):
         file_name_wo_ext, _ = os.path.splitext(input_file)
+        beat_times = None
+        if use_beats:
+            beat_file = beat_files[in_file_idx]
+
+            if beat_files is not None:
+                with open(os.path.join(beat_file_path, beat_file)) as f:
+                    content = f.readlines()
+
+                beat_times = []
+                for i_line, line in enumerate(content):
+                    parts = line.split()
+                    time = float(parts[0])
+                    beat_num = int(parts[1])
+                    beat_times.append([time, beat_num])
+
+                beat_times = fix_beats_list(beat_times)
 
         if output_file is None or (not os.path.isdir(output_file) and is_input_dir):
             output_file = os.path.join(in_file_path, file_name_wo_ext + ".mid")
@@ -68,15 +151,57 @@ if __name__ == '__main__':
             outfile.type = 0
             outfile.ticks_per_beat = ppq
 
-            track.append(MetaMessage('set_tempo', tempo=midi_tempo))
+            found_beats = use_beats and beat_times is not None and len(beat_times) > 0
+
+            if not found_beats:
+                track.append(MetaMessage('set_tempo', tempo=midi_tempo))
 
             track.append(Message('program_change', program=program_nr, time=0))
             lastTime = 0
             times.sort(key=lambda tup: tup[0])
+            beat_times.sort(key=lambda tup: tup[0])
+
+            beat_idx = 0
+            last_tempo = None
+            last_timesig = None
             for entry in times:
-                curTime = max(int((entry[0]) / s_per_tick), 0)
-                deltaTime = curTime - lastTime
-                lastTime = curTime
+
+                if found_beats:
+                    while beat_times[beat_idx][0] < entry[0]:
+                        cur_time = beat_times[beat_idx][0]
+                        # check time signature on downbeats and add an event if we must change signature
+                        if beat_times[beat_idx][1] == 1:
+                            time_sig_idx = beat_idx+1
+                            while time_sig_idx < len(beat_times) and beat_times[time_sig_idx][1] != 1:
+                                time_sig_idx += 1
+                            cur_timesig = beat_times[time_sig_idx-1][1]
+
+                            if last_timesig is None or cur_timesig != last_timesig:
+                                deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
+                                lastTime = cur_time
+
+                                track.append(MetaMessage('time_signature', time=deltaTime, numerator=cur_timesig,
+                                                         denominator=4))
+                                last_timesig = cur_timesig
+
+                        # calculate current tempo and check if we need a tempo change event and add it in case
+                        if beat_idx >= len(beat_times)-1:
+                            cur_tempo = last_tempo
+                        else:
+                            cur_tempo = int(1e6 * (beat_times[beat_idx+1][0] - beat_times[beat_idx][0]))
+                        if last_tempo is None or cur_tempo != last_tempo:
+                            deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
+                            lastTime = cur_time
+
+                            track.append(MetaMessage('set_tempo', tempo=cur_tempo, time=deltaTime))
+                            last_tempo = cur_tempo
+                            s_per_tick = cur_tempo / 1000.0 / 1000 / ppq
+
+                        beat_idx += 1
+
+                cur_time = entry[0]
+                deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
+                lastTime = cur_time
 
                 if entry[1] in midi_drum_map:
                     note = midi_drum_map[entry[1]]
