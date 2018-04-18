@@ -1,11 +1,12 @@
 from mido import MidiFile
 # we use our own bpm2tempo becaus the mido stuff cuts off decimals - which is not good when the bpm tempo is not an int
-from . import bpm2tempo, tempo2bpm
+from . import bpm2tempo, calc_beat_times
 import argparse
 import os
+import copy
 
 
-def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=False, beats_file=None, ignore_unknown=False):
+def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=False, beats_file=None):
 
     in_file_path = os.path.dirname(input_file)
     in_file_name = os.path.basename(input_file)
@@ -22,18 +23,13 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
         beats_file = os.path.join(out_file_path, out_file_name_wo_ext + ".beats")
 
     times = []
-    beat_times = [[0, 1]]
-    beat_time = 0.0
-    beat_num = 0
-    sub_beat = 0
 
-    time_sig_num = 4
-    time_sig_denom = 4
+    max_time = 0
 
     infile = MidiFile(input_file)
     ppq = infile.ticks_per_beat
 
-    midi_tempo = bpm2tempo(bpm)  # = 60 * 1000 * 1000 / bpm
+    midi_tempo = bpm2tempo(bpm)
     s_per_tick = midi_tempo / 1000.0 / 1000 / ppq
 
     print("Reading midi file '"+input_file+"' ...")
@@ -41,7 +37,6 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
     file_type = infile.type
 
     tempo_track = []
-    beats_done = False
 
     for track_idx, track in enumerate(infile.tracks):
         cur_time = 0
@@ -76,37 +71,21 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
             cur_track = track
 
         for message in cur_track:
-            do_beats = False
             delta_tick = message.time
             delta_time = delta_tick * s_per_tick
             cur_time += delta_time
-            if message.type == 'time_signature':
-                time_sig_denom = message.denominator
-                time_sig_num = message.numerator
-                do_beats = True
+
+            if cur_time > max_time:  # collect max time for beats if necessary
+                max_time = cur_time
 
             if message.type == 'set_tempo':
                 midi_tempo = message.tempo
-                bpm = tempo2bpm(midi_tempo)
                 s_per_tick = midi_tempo / 1000.0 / 1000 / ppq
-                do_beats = True
 
             if message.type == 'note_on' and message.velocity > 0:
                 inst_idx = message.note
                 velocity = float(message.velocity) / 127.0
                 times.append([cur_time, inst_idx, velocity])
-                do_beats = True
-
-            # todo: fix beat writing - see and compare separate drums script!!
-            if not beats_done and do_beats:
-                sub_beat += delta_time * bpm / 60.0 * time_sig_denom / 4.0
-                while sub_beat > 1:
-                    sub_beat -= 1
-                    beat_time += 60.0 / bpm * 4.0 / time_sig_denom
-                    beat_num = (beat_num + 1) % time_sig_num
-                    beat_times.append([beat_time, beat_num+1])
-
-        beats_done = True
 
     print("Writing output ...")
     # sort by time (for multiple tracks)
@@ -116,6 +95,7 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
             f.write("%3.5f \t %d \t %1.3f \n" % (entry[0]+offset, entry[1], entry[2]))
 
     if write_beats:
+        beat_times = calc_beat_times(copy.deepcopy(infile.tracks[0]), max_time, ppq)
         with open(beats_file, 'w') as f:
             for entry in beat_times:
                 f.write("%3.5f \t %d\n" % (entry[0]+offset, entry[1]))
@@ -132,14 +112,12 @@ if __name__ == '__main__':
     parser.add_argument('--outfile', '-o', help='output file name.', default=None)
     parser.add_argument('--time_offset', '-m', help='offset for time of labels.', default=0, type=float)
     parser.add_argument('--tempo', '-t', help='Tempo to be used (in BPM) if MIDI file doesn\'t contain tempo events.', default=120, type=float)
-    parser.add_argument('--ignore', '-g', help='Ignore unknown midi notes and continue', action='store_true', default=False)
 
     args = parser.parse_args()
 
     input_file = args.infile
     output_file = args.outfile
     offset = args.time_offset
-    bpm = args.tempo
-    ignore_unknown = args.ignore
+    bpm_param = args.tempo
 
-    midi_to_txt(input_file, output_file, offset, bpm, False, None, ignore_unknown)
+    midi_to_txt(input_file, output_file, offset, bpm_param, False, None)
