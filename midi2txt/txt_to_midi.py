@@ -1,7 +1,9 @@
-from mido import MidiFile, MidiTrack, MetaMessage, Message, bpm2tempo
+from mido import MidiFile, MidiTrack, MetaMessage, Message
+# we use our own bpm2tempo becaus the mido stuff cuts off decimals - which is not good when the bpm tempo is not an int
 from settings import midi_drum_map
 import argparse
 import os
+from . import bpm2tempo
 
 
 def fix_beats_list(beat_times):
