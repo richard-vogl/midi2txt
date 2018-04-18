@@ -1,5 +1,6 @@
-from mido import MidiFile, bpm2tempo, tempo2bpm
-from settings import rev_midi_drum_map
+from mido import MidiFile
+# we use our own bpm2tempo becaus the mido stuff cuts off decimals - which is not good when the bpm tempo is not an int
+from . import bpm2tempo, tempo2bpm
 import argparse
 import os
 
@@ -91,15 +92,12 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
                 do_beats = True
 
             if message.type == 'note_on' and message.velocity > 0:
-                if message.note in rev_midi_drum_map:
-                    inst_idx = rev_midi_drum_map[message.note] # midi_drum_map.keys()[midi_drum_map.values().index(message.note)]
-                    if inst_idx is not None:
-                        times.append([cur_time, inst_idx])
-                    do_beats = True
-                elif not ignore_unknown:
-                    print("Unknown midi note with value: "+str(message.note)+" . Remove event or run again with -g parameter to ignore.")
-                    exit()
+                inst_idx = message.note
+                velocity = float(message.velocity) / 127.0
+                times.append([cur_time, inst_idx, velocity])
+                do_beats = True
 
+            # todo: fix beat writing - see and compare separate drums script!!
             if not beats_done and do_beats:
                 sub_beat += delta_time * bpm / 60.0 * time_sig_denom / 4.0
                 while sub_beat > 1:
@@ -115,7 +113,7 @@ def midi_to_txt(input_file, output_file=None, offset=0, bpm=120, write_beats=Fal
     times.sort(key=lambda tup: tup[0])
     with open(output_file, 'w') as f:
         for entry in times:
-            f.write("%3.5f \t %d\n" % (entry[0]+offset, entry[1]))
+            f.write("%3.5f \t %d \t %1.3f \n" % (entry[0]+offset, entry[1], entry[2]))
 
     if write_beats:
         with open(beats_file, 'w') as f:
