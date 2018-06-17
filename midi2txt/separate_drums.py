@@ -2,7 +2,7 @@ from mido import MidiFile
 import argparse
 import copy
 from midi2txt import bpm2tempo
-from . import calc_beat_times
+from midi2txt import calc_beat_times
 
 import os
 
@@ -199,11 +199,11 @@ if __name__ == '__main__':
     # add argument parser
     parser = argparse.ArgumentParser(
         description='extract drum track from midi and creates two separate files.')
-    parser.add_argument('--infile', '-i', help='input midi file.')
-    parser.add_argument('--mididrumsout', '-o', help='output file name midi drums.')
-    parser.add_argument('--midiaccompout', '-a', help='output file name midi accompaniment.')
-    parser.add_argument('--annotdrumout', '-t', help='output file name annotations drums.')
-    parser.add_argument('--annotbeatout', '-b', help='output file name annotations beats.')
+    parser.add_argument('--infile', '-i', help='input midi file.', required=True)
+    parser.add_argument('--mididrumsout', '-o', help='output file name midi drums.', required=True)
+    parser.add_argument('--midiaccompout', '-a', help='output file name midi accompaniment.', required=True)
+    parser.add_argument('--annotdrumout', '-t', help='output file name annotations drums.', required=True)
+    parser.add_argument('--annotbeatout', '-b', help='output file name annotations beats.', required=True)
 
     args = parser.parse_args()
     #
