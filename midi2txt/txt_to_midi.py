@@ -3,8 +3,8 @@ from mido import MidiFile, MidiTrack, MetaMessage, Message
 from settings import midi_drum_map
 import argparse
 import os
-from . import bpm2tempo
-
+from midi2txt import bpm2tempo
+import numpy as np
 
 def fix_beats_list(beat_times):
     first_downbeat = 0
@@ -47,8 +47,27 @@ def fix_beats_list(beat_times):
     return beat_times
 
 
+def smooth_beat_list(beat_times, smooth):
+    #TODO sounds good, doesnt work like this...
+    import numpy as np
+    deltas = np.diff(np.asarray(beat_times)[:, 0])
+
+    cumsum = np.cumsum(deltas)
+    means = (cumsum[smooth:] - cumsum[:-smooth]) / float(smooth)
+
+    shifts = deltas - np.hstack((np.repeat(means[0], smooth), means))
+
+    beat_times_new = [[item[0][0] - item[1], item[0][1]] for item in zip(beat_times, np.hstack(([0], shifts)))]
+    
+    return beat_times
+
+
 def midi_delta_time(delta_time, s_per_tick):
-    return int(max(round(delta_time / s_per_tick), 0.0))
+    return int(max(np.ceil(delta_time / s_per_tick), 0.0))
+
+
+def back_from_midi_time(delta_time, s_per_tick):
+    return delta_time*s_per_tick
 
 
 if __name__ == '__main__':
@@ -63,7 +82,10 @@ if __name__ == '__main__':
     parser.add_argument('--program', '-p', help='program number of midi track', default=0)
     parser.add_argument('--channel', '-c', help='channel number of midi track', default=10)
     parser.add_argument('--ignore', '-g', help='Ignore unknown instrument notes and continue', action='store_true', default=False)
-    parser.add_argument('--sync_to_audio', '-s', help='Make MIDI output synchronous to audio. If beats are used, usa a bar at the beginning to fill the silence', type=bool, default=True)
+    parser.add_argument('--no_map', '-n', help='Dont map midi isntrument notes', action='store_true',
+                        default=False)
+    parser.add_argument('--smooth', '-s', help='smooth tempo curve, use a floating window of N beats', type=int, default=0)
+    parser.add_argument('--sync_to_audio', '-a', help='Make MIDI output synchronous to audio. If beats are used, usa a bar at the beginning to fill the silence', type=bool, default=True)
 
     args = parser.parse_args()
     # prepare input params
@@ -75,14 +97,19 @@ if __name__ == '__main__':
     channel_nr = args.channel
     ignore_unknown = args.ignore
     sync_to_audio = args.sync_to_audio
+    no_map = args.no_map
+    smooth = args.smooth
 
     in_file_path = os.path.dirname(input_file)
-    beat_file_path = os.path.dirname(input_beat_file)
     is_input_dir = os.path.isdir(input_file)
-    is_input_beat_dir = os.path.isdir(input_beat_file)
 
     beat_files = None
-    use_beats = input_beat_file is not None and os.path.exists(input_beat_file)
+    use_beats = input_beat_file is not None
+    if use_beats:
+        beat_file_path = os.path.dirname(input_beat_file)
+        use_beats = use_beats and os.path.exists(input_beat_file)
+        is_input_beat_dir = os.path.isdir(input_beat_file)
+
     if is_input_dir:
         files = os.listdir(input_file)
         files = [x for x in files if x.endswith('.txt') or x.endswith('.drums')]
@@ -128,6 +155,10 @@ if __name__ == '__main__':
 
                 beat_times = fix_beats_list(beat_times)
 
+                if smooth > 0:
+                    # smooth tempo curve - i.e. move beats to average grid positions using a floating window
+                    beat_times = smooth_beat_list(beat_times, smooth)
+
         if output_file is None or (not os.path.isdir(output_file) and is_input_dir):
             output_file = os.path.join(in_file_path, file_name_wo_ext + ".mid")
         elif os.path.isdir(output_file):
@@ -161,7 +192,8 @@ if __name__ == '__main__':
             track.append(Message('program_change', program=program_nr, time=0))
             lastTime = 0
             times.sort(key=lambda tup: tup[0])
-            beat_times.sort(key=lambda tup: tup[0])
+            if use_beats:
+                beat_times.sort(key=lambda tup: tup[0])
 
             beat_idx = 0
             last_tempo = None
@@ -180,7 +212,8 @@ if __name__ == '__main__':
 
                             if last_timesig is None or cur_timesig != last_timesig:
                                 deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
-                                lastTime = cur_time
+                                lastTime = lastTime + back_from_midi_time(deltaTime, s_per_tick)
+                                # lastTime = cur_time
 
                                 track.append(MetaMessage('time_signature', time=deltaTime, numerator=cur_timesig,
                                                          denominator=4))
@@ -190,12 +223,13 @@ if __name__ == '__main__':
                         if beat_idx >= len(beat_times)-1:
                             cur_tempo = last_tempo
                         else:
-                            cur_tempo = int(1e6 * (beat_times[beat_idx+1][0] - beat_times[beat_idx][0]))
+                            cur_tempo = 1e6 * (beat_times[beat_idx+1][0] - beat_times[beat_idx][0])
                         if last_tempo is None or cur_tempo != last_tempo:
                             deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
-                            lastTime = cur_time
+                            lastTime = lastTime + back_from_midi_time(deltaTime, s_per_tick)
+                            # lastTime = cur_time
 
-                            track.append(MetaMessage('set_tempo', tempo=cur_tempo, time=deltaTime))
+                            track.append(MetaMessage('set_tempo', tempo=int(round(cur_tempo)), time=deltaTime))
                             last_tempo = cur_tempo
                             s_per_tick = cur_tempo / 1000.0 / 1000 / ppq
 
@@ -203,10 +237,14 @@ if __name__ == '__main__':
 
                 cur_time = entry[0]
                 deltaTime = midi_delta_time(cur_time - lastTime, s_per_tick)
-                lastTime = cur_time
+                lastTime = lastTime + back_from_midi_time(deltaTime, s_per_tick)
+                # lastTime = cur_time
 
-                if entry[1] in midi_drum_map:
-                    note = midi_drum_map[entry[1]]
+                if entry[1] in midi_drum_map or no_map:
+                    if no_map:
+                        note = entry[1]
+                    else:
+                        note = midi_drum_map[entry[1]]
                     track.append(Message('note_on', note=note, velocity=100,
                                          time=deltaTime, channel=channel_nr))
                     #  print('event: note: %d, time: %d'% (note, curTime))

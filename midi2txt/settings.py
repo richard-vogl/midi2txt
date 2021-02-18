@@ -1,5 +1,18 @@
 
+names_m_map = ['BD', 'SD', 'TT', 'HH', 'CY', 'RD', 'CB', 'CL']
+
 midi_drum_map = {
+    0: 36,  # bass drum
+    1: 38,  # snare drum
+    2: 47,  # tt
+    3: 42,  # hi-hat
+    4: 49,  # crash
+    5: 51,  # ride
+    6: 56,  # cowbell
+    7: 75,  # clave
+}
+
+midi_drum_map_rbma = {
     0: 36,  # bass drum
     1: 38,  # snare drum
     2: 42,  # closed hi-hat

@@ -1,6 +1,6 @@
 from mido import MidiFile
 # we use our own bpm2tempo becaus the mido stuff cuts off decimals - which is not good when the bpm tempo is not an int
-from . import bpm2tempo, calc_beat_times
+from midi2txt import bpm2tempo, calc_beat_times
 import argparse
 import os
 import copy
