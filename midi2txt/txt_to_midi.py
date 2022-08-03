@@ -6,6 +6,7 @@ import os
 from midi2txt import bpm2tempo
 import numpy as np
 
+
 def fix_beats_list(beat_times):
     first_downbeat = 0
     for cur_beat in beat_times:
@@ -75,14 +76,14 @@ if __name__ == '__main__':
     # add argument parser
     parser = argparse.ArgumentParser(
         description='Convert text annotations for drum files to midi.')
-    parser.add_argument('--infile', '-i', help='input audio file.')
+    parser.add_argument('--infile', '-i', help='input txt file.')
     parser.add_argument('--beatfile', '-b', help='input beat file.', default=None)
     parser.add_argument('--outfile', '-o', help='output file name.', default=None)
     parser.add_argument('--tempo', '-t', help='tempo of midi file in BPM', default=120, type=float)
     parser.add_argument('--program', '-p', help='program number of midi track', default=0)
     parser.add_argument('--channel', '-c', help='channel number of midi track', default=10)
     parser.add_argument('--ignore', '-g', help='Ignore unknown instrument notes and continue', action='store_true', default=False)
-    parser.add_argument('--no_map', '-n', help='Dont map midi isntrument notes', action='store_true',
+    parser.add_argument('--no_map', '-n', help='Dont map midi instrument notes', action='store_true',
                         default=False)
     parser.add_argument('--smooth', '-s', help='smooth tempo curve, use a floating window of N beats', type=int, default=0)
     parser.add_argument('--sync_to_audio', '-a', help='Make MIDI output synchronous to audio. If beats are used, usa a bar at the beginning to fill the silence', type=bool, default=True)
@@ -154,7 +155,6 @@ if __name__ == '__main__':
                     beat_times.append([time, beat_num])
 
                 beat_times = fix_beats_list(beat_times)
-
                 if smooth > 0:
                     # smooth tempo curve - i.e. move beats to average grid positions using a floating window
                     beat_times = smooth_beat_list(beat_times, smooth)
@@ -172,7 +172,10 @@ if __name__ == '__main__':
             parts = line.split()
             time = float(parts[0])
             inst = int(parts[1])
-            times.append([time, inst])
+            if (len(parts) > 2):
+                times.append([time, inst, float(parts[2])])
+            else:
+                times.append([time, inst])
 
         with MidiFile() as outfile:
             ppq = 192
@@ -245,7 +248,10 @@ if __name__ == '__main__':
                         note = entry[1]
                     else:
                         note = midi_drum_map[entry[1]]
-                    track.append(Message('note_on', note=note, velocity=100,
+                    velo = 100
+                    if len(entry) > 2:
+                        velo = int(round(entry[2]))
+                    track.append(Message('note_on', note=note, velocity=velo,
                                          time=deltaTime, channel=channel_nr))
                     #  print('event: note: %d, time: %d'% (note, curTime))
                     track.append(Message('note_off', note=note, velocity=100, time=0, channel=channel_nr))
